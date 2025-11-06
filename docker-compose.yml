@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - MAX_CONCURRENCY=5
+      - PLAYWRIGHT_HEADLESS=true
+    restart: unless-stopped
