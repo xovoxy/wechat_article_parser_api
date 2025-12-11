@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     PLAYWRIGHT_HEADLESS: bool = True
     PLAYWRIGHT_TIMEOUT: int = 30000  # 30秒
     
+    # DashScope 配置
+    DASHSCOPE_API_KEY: Optional[str] = os.getenv("DASHSCOPE_API_KEY", None)
+    
+    # 图片文章检测阈值
+    IMAGE_ARTICLE_TEXT_THRESHOLD: int = int(os.getenv("IMAGE_ARTICLE_TEXT_THRESHOLD", "100"))  # 文本长度阈值
+    IMAGE_ARTICLE_MIN_IMAGES: int = int(os.getenv("IMAGE_ARTICLE_MIN_IMAGES", "3"))  # 最少图片数量
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

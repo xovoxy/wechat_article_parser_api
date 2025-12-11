@@ -1,7 +1,9 @@
 """HTML 解析模块"""
-from typing import Optional
-from bs4 import BeautifulSoup
-from app.utils import clean_text, format_publish_time
+from typing import Optional, List
+from bs4 import BeautifulSoup, Tag
+from app.utils import clean_text, format_publish_time, extract_image_urls
+from app.config import settings
+from app.vision import VisionOCR
 
 
 class ArticleParser:
@@ -24,8 +26,18 @@ class ArticleParser:
         # 提取封面图
         cover = ArticleParser._extract_cover(soup)
         
-        # 提取正文
-        content_html, content_text = ArticleParser._extract_content(soup)
+        # 提取正文（包含图片 URL 提取）
+        content_html, content_text, image_urls = ArticleParser._extract_content(soup)
+        
+        # 检测是否为图片文章，如果是则使用 OCR 提取文字
+        if ArticleParser._is_image_article(content_text, image_urls):
+            ocr_text = ArticleParser._extract_text_with_ocr(image_urls)
+            if ocr_text:
+                # 合并原有文本和 OCR 提取的文本
+                if content_text:
+                    content_text = f"{content_text}\n\n{ocr_text}"
+                else:
+                    content_text = ocr_text
         
         # 提取阅读量和点赞数
         read_count, like_count = ArticleParser._extract_stats(soup)
@@ -120,13 +132,13 @@ class ArticleParser:
         return None
     
     @staticmethod
-    def _extract_content(soup: BeautifulSoup) -> tuple[str, str]:
-        """提取正文内容（HTML 和纯文本）"""
+    def _extract_content(soup: BeautifulSoup) -> tuple[str, str, List[str]]:
+        """提取正文内容（HTML、纯文本和图片 URL）"""
         # 查找正文容器
         content_div = soup.find('div', class_='rich_media_content') or soup.find('div', id='js_content')
         
         if not content_div:
-            return "", ""
+            return "", "", []
         
         # 移除不需要的元素
         for tag in content_div.find_all(['script', 'style', 'iframe']):
@@ -138,7 +150,58 @@ class ArticleParser:
         # 提取纯文本
         content_text = clean_text(content_div.get_text())
         
-        return content_html, content_text
+        # 提取图片 URL（只从正文容器中提取，排除封面图）
+        image_urls = extract_image_urls(soup, content_div)
+        
+        return content_html, content_text, image_urls
+    
+    @staticmethod
+    def _is_image_article(content_text: str, image_urls: List[str]) -> bool:
+        """
+        判断是否为图片文章
+        
+        Args:
+            content_text: 提取的文本内容
+            image_urls: 图片 URL 列表
+            
+        Returns:
+            是否为图片文章
+        """
+        # 检查图片数量是否达到阈值
+        if len(image_urls) < settings.IMAGE_ARTICLE_MIN_IMAGES:
+            return False
+        
+        # 检查文本长度是否小于阈值
+        text_length = len(content_text.strip())
+        if text_length >= settings.IMAGE_ARTICLE_TEXT_THRESHOLD:
+            return False
+        
+        # 如果图片数量远大于文本内容，判定为图片文章
+        # 例如：图片数量 >= 3 且文本长度 < 100
+        return True
+    
+    @staticmethod
+    def _extract_text_with_ocr(image_urls: List[str]) -> str:
+        """
+        使用 OCR 从图片中提取文字
+        
+        Args:
+            image_urls: 图片 URL 列表
+            
+        Returns:
+            提取的文字内容
+        """
+        # 检查是否配置了 API Key
+        if not settings.DASHSCOPE_API_KEY:
+            print("DASHSCOPE_API_KEY is not configured. Skipping OCR.")
+            return ""
+        
+        try:
+            ocr = VisionOCR()
+            return ocr.extract_text_from_images(image_urls)
+        except Exception as e:
+            print(f"Error during OCR extraction: {e}")
+            return ""
     
     @staticmethod
     def _extract_stats(soup: BeautifulSoup) -> tuple[Optional[int], Optional[int]]:
