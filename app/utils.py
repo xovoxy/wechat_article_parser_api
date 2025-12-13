@@ -66,72 +66,46 @@ def extract_image_urls(soup: BeautifulSoup, content_div: Optional[Tag] = None) -
     # 确定搜索范围
     search_area = content_div if content_div else soup
     
-    # 查找所有 img 标签
+    # 1. 查找所有 img 标签
     img_tags = search_area.find_all('img')
     
     for img in img_tags:
-        # 优先使用 data-src（微信图片懒加载）
-        image_url = img.get('data-src') or img.get('src') or img.get('data-original')
+        # 跳过封面图（已经在 cover 字段中）
+        if img.get('class') and 'rich_media_cover_img' in img.get('class', []):
+            continue
+        
+        # 优先使用 src（实际加载的图片），然后是 data-src（懒加载占位符）
+        # 微信图片通常 src 是实际加载的图片，data-src 是懒加载的原始图片
+        image_url = (
+            img.get('src') or  # 优先使用 src（实际加载的图片）
+            img.get('data-src') or  # 然后是 data-src（懒加载）
+            img.get('data-original') or
+            img.get('data-lazy-src') or
+            img.get('data-lazy')
+        )
         
         if image_url:
-            # 清理和验证 URL
-            image_url = image_url.strip()
-            if is_valid_image_url(image_url):
+            # 清理 URL（移除可能的锚点）
+            image_url = image_url.split('#')[0].strip()
+            
+            # 只保留完整的 HTTP/HTTPS URL，忽略相对路径
+            if image_url.startswith(('http://', 'https://')):
                 # 避免重复
                 if image_url not in image_urls:
                     image_urls.append(image_url)
     
+    # 2. 查找所有 a 标签中的 imgurl 属性（微信文章中的图片链接）
+    a_tags = search_area.find_all('a', attrs={'imgurl': True})
+    for a_tag in a_tags:
+        imgurl = a_tag.get('imgurl')
+        if imgurl:
+            # 清理 URL（移除可能的锚点）
+            imgurl = imgurl.split('#')[0].strip()
+            
+            # 只保留完整的 HTTP/HTTPS URL，忽略相对路径
+            if imgurl.startswith(('http://', 'https://')):
+                # 避免重复
+                if imgurl not in image_urls:
+                    image_urls.append(imgurl)
+    
     return image_urls
-
-
-def is_valid_image_url(url: str) -> bool:
-    """
-    验证图片 URL 是否有效
-    
-    Args:
-        url: 图片 URL
-        
-    Returns:
-        是否为有效的图片 URL
-    """
-    if not url:
-        return False
-    
-    # 移除可能的查询参数和片段
-    parsed = urlparse(url)
-    
-    # 检查是否为有效的 HTTP/HTTPS URL
-    if parsed.scheme not in ['http', 'https']:
-        return False
-    
-    # 检查路径是否为空
-    if not parsed.path:
-        return False
-    
-    # 排除一些明显不是图片的 URL（如 base64 data URI 等）
-    if url.startswith('data:'):
-        return False
-    
-    # 微信图片常见域名
-    wechat_image_domains = [
-        'mmbiz.qpic.cn',
-        'mmbiz.qlogo.cn',
-        'wx.qlogo.cn',
-        'mp.weixin.qq.com'
-    ]
-    
-    # 如果域名是微信图片域名，认为是有效的
-    if parsed.netloc in wechat_image_domains:
-        return True
-    
-    # 检查文件扩展名（可选）
-    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
-    path_lower = parsed.path.lower()
-    if any(path_lower.endswith(ext) for ext in image_extensions):
-        return True
-    
-    # 如果没有扩展名但路径包含图片相关关键词，也认为可能是图片
-    if 'image' in path_lower or 'img' in path_lower or 'pic' in path_lower:
-        return True
-    
-    return False
