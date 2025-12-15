@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.models import ArticleResponse, HealthResponse
 from app.crawler import get_crawler, close_crawler
 from app.parser import ArticleParser
-from app.utils import validate_wechat_url, random_delay
+from app.utils import validate_wechat_url, clean_article_url, random_delay
 from app.config import settings
 
 # 应用启动时间
@@ -66,6 +66,9 @@ async def parse_article(
             status_code=400,
             detail="Invalid WeChat article URL. URL must be from mp.weixin.qq.com"
         )
+    
+    # 清理URL，去掉查询参数
+    url = clean_article_url(url)
     
     try:
         # 获取爬虫实例

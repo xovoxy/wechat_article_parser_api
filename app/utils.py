@@ -7,10 +7,25 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup, Tag
 
 
+def clean_article_url(url: str) -> str:
+    """清理文章URL，去掉查询参数"""
+    if not url:
+        return url
+    
+    # 去掉 ? 后面的查询参数
+    if '?' in url:
+        url = url.split('?')[0]
+    
+    return url
+
+
 def validate_wechat_url(url: str) -> bool:
     """验证是否为有效的微信公众号文章URL"""
     if not url:
         return False
+    
+    # 先清理 URL（去掉查询参数）再验证
+    url = clean_article_url(url)
     
     parsed = urlparse(url)
     if parsed.netloc not in ["mp.weixin.qq.com", "weixin.qq.com"]:
